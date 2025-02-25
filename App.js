@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, TextInput, Button, FlatList, Text, Pressable, Platform } from 'react-native';
+import { StyleSheet, View, TextInput, Button, FlatList, Text, Pressable, Platform, Switch } from 'react-native';
 import { Menu, Provider } from 'react-native-paper'; // Ensure correct import
 import axios from 'axios';
 
@@ -17,7 +17,7 @@ export default function App() {
     const fetchTasks = async () => {
       try {
         const response = await axios.get(`${API_URL}/tasks`);
-        setTasks(response.data);
+        setTasks(response.data.map(task => ({ ...task, menuVisible: false }))); // Ensure menuVisible is initialized
       } catch (error) {
         console.log('Error fetching tasks:', error);
       }
@@ -37,12 +37,29 @@ export default function App() {
     }
   };
 
+  const handleUpdateCategory = async (taskId, newCategory) => {
+    try {
+      await axios.patch(`${API_URL}/tasks/${taskId}`, { category: newCategory });
+    } catch (error) {
+      console.log('Error updating category:', error);
+    }
+  };
+
   const deleteTask = async (taskId) => {
     try {
       await axios.delete(`${API_URL}/tasks/${taskId}`);
       setTasks(tasks.filter((task) => task.id !== taskId)); // Update state to remove the task
     } catch (error) {
       console.log('Error deleting task:', error);
+    }
+  };
+
+  const handleToggleCompleted = async (taskId, completed) => {
+    try {
+      await axios.patch(`${API_URL}/tasks/${taskId}/completed`, { completed });
+      setTasks(tasks.map(t => t.id === taskId ? { ...t, completed } : t));
+    } catch (error) {
+      console.log('Error toggling completed status:', error);
     }
   };
 
@@ -92,10 +109,45 @@ export default function App() {
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
             <View style={styles.taskItemContainer}>
-              <Text style={styles.taskItem}>{item.text} ({item.category})</Text>
+              <Text style={[styles.taskItem, item.completed && styles.completedTask]}>
+                {item.text} ({item.category})
+              </Text>
               <Pressable onPress={() => deleteTask(item.id)} style={styles.deleteButton}>
                 <Text style={styles.deleteButtonText}>X</Text>
               </Pressable>
+              <Pressable
+                onLongPress={() => {
+                  console.log(`Long press triggered for task ${item.id}`);
+                  setTasks(tasks.map(t => t.id === item.id ? { ...t, menuVisible: true } : t));
+                }}
+                onPress={() => console.log(`Regular press on edit for task ${item.id}`)}
+                style={styles.editAnchor}
+                delayLongPress={500}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Text style={styles.editText}>...</Text>
+              </Pressable>
+              <Switch
+                value={item.completed || false}
+                onValueChange={(value) => handleToggleCompleted(item.id, value)}
+                style={styles.switch}
+              />
+              <Menu
+                visible={item.menuVisible || false}
+                onDismiss={() => setTasks(tasks.map(t => t.id === item.id ? { ...t, menuVisible: false } : t))}
+                anchor={<View style={styles.menuAnchor} />}
+              >
+                {categories.map((cat) => (
+                  <Menu.Item
+                    key={cat}
+                    onPress={() => {
+                      handleUpdateCategory(item.id, cat);
+                      setTasks(tasks.map(t => t.id === item.id ? { ...t, menuVisible: false, category: cat } : t));
+                    }}
+                    title={<Text>{cat}</Text>}
+                  />
+                ))}
+              </Menu>
             </View>
           )}
         />
@@ -105,6 +157,14 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  editAnchor: {
+    padding: 5,
+    marginLeft: 10, // Space between delete button and edit anchor
+  },
+  editText: {
+    fontSize: 16,
+    color: '#007AFF', // Blue for iOS-style interactive text
+  },
   container: {
     flex: 1,
     padding: 20,
@@ -163,5 +223,16 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  menuAnchor: {
+    width: 0,
+    height: 0, // Invisible anchor for Menu positioning
+  },
+  switch: {
+    marginLeft: 10, // Space between edit indicator and switch
+  },
+  completedTask: {
+    textDecorationLine: 'line-through', // Strike through for completed tasks
+    color: '#888', // Gray out completed tasks
   },
 });
